@@ -10,13 +10,16 @@ public class ReadingsController : ControllerBase
 {
     private readonly DeviceSecretValidatorService _secretValidator;
     private readonly AlertService _alertService;
+    private readonly FirmwareValidatorService _firmwareValidator;
 
     public ReadingsController(
-        DeviceSecretValidatorService secretValidator, 
-        AlertService alertService)
+        DeviceSecretValidatorService secretValidator,
+        AlertService alertService,
+        FirmwareValidatorService firmwareValidator)
     {
         _secretValidator = secretValidator;
         _alertService = alertService;
+        _firmwareValidator = firmwareValidator;
     }
 
     /// <summary>
@@ -34,7 +37,7 @@ public class ReadingsController : ControllerBase
     /// <param name="deviceReadingRequest">Sensor information and extra metadata from device.</param>
     [HttpPost("evaluate")]
     public ActionResult<IEnumerable<Alert>> EvaluateReading(
-        string deviceSecret,
+        [FromHeader(Name = "x-device-shared-secret")] string deviceSecret,
         [FromBody] DeviceReadingRequest deviceReadingRequest)
     {
         if (!_secretValidator.ValidateDeviceSecret(deviceSecret))
@@ -42,6 +45,11 @@ public class ReadingsController : ControllerBase
             return Problem(
                 detail: "Device secret is not within the valid range.",
                 statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (!_firmwareValidator.ValidateFirmwareFormat(deviceReadingRequest.FirmwareVersion))
+        {
+            return BadRequest(new ValidationProblemDetails { Errors = { new KeyValuePair<string, string[]>("FirmwareVersion", new string[] { "The firmware value does not match semantic versioning format." }) } });
         }
 
         return Ok(_alertService.GetAlerts(deviceReadingRequest));
